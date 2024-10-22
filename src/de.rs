@@ -1,15 +1,24 @@
+#![allow(clippy::should_implement_trait)]
+use serde::de::{
+    self, Deserialize, DeserializeOwned, DeserializeSeed, EnumAccess, Error as _, IntoDeserializer,
+    MapAccess, SeqAccess, VariantAccess, Visitor,
+};
+use serde::forward_to_deserialize_any;
 use std::fmt::{self, Display};
-use std::str::FromStr;
 use std::mem::replace;
+use std::str::FromStr;
 use std::{error, io, num, result, str};
-use serde::de::{self, Error as _, Deserialize, DeserializeOwned, DeserializeSeed, EnumAccess, Visitor, MapAccess, SeqAccess, VariantAccess, IntoDeserializer};
-use parse::{self, Item};
+
+use crate::parse::{self, Item};
 
 pub trait Trait {
     fn next(&mut self) -> Option<result::Result<Item, Error>>;
 }
 
-impl<E, T: Iterator<Item=result::Result<Item, E>>> Trait for T where Error: From<E> {
+impl<E, T: Iterator<Item = result::Result<Item, E>>> Trait for T
+where
+    Error: From<E>,
+{
     fn next(&mut self) -> Option<result::Result<Item, Error>> {
         Iterator::next(self).map(|v| v.map_err(Into::into))
     }
@@ -96,7 +105,7 @@ pub struct Deserializer<T> {
 impl<T> Deserializer<T> {
     pub fn new(input: T) -> Self {
         Deserializer {
-            input: input,
+            input,
             next: Next::Init,
         }
     }
@@ -137,7 +146,7 @@ impl<T: Trait> Deserializer<T> {
                 } else {
                     unreachable!()
                 }
-            },
+            }
             &mut Next::Eof => Ok(None),
             &mut Next::Init => unreachable!(),
         }
@@ -463,11 +472,19 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
     }
 
     // Unit struct means a named value containing no data.
-    fn deserialize_unit_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value> {
+    fn deserialize_unit_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_unit(visitor)
     }
 
-    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value> {
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value> {
         visitor.visit_newtype_struct(self)
     }
 
@@ -479,7 +496,12 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_tuple_struct<V: Visitor<'de>>(self, _name: &'static str, _len: usize, visitor: V) -> Result<V::Value> {
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_any(visitor)
     }
 
@@ -487,11 +509,21 @@ impl<'de, 'a, T: Trait> de::Deserializer<'de> for &'a mut ValueDeserializer<'a, 
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_struct<V: Visitor<'de>>(self, _name: &'static str, _fields: &'static [&'static str], visitor: V) -> Result<V::Value> {
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value> {
         self.deserialize_map(visitor)
     }
 
-    fn deserialize_enum<V: Visitor<'de>>(self, _name: &'static str, _variants: &'static [&'static str], visitor: V) -> Result<V::Value> {
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value> {
         match (self.0).peek_kind()? {
             Some(PeekKind::Value) => visitor.visit_enum((self.0).next_value()?.into_deserializer()),
             None | Some(PeekKind::Section) => Err(Error::InvalidState),
@@ -654,7 +686,7 @@ impl<'de, 'a, T: Trait + 'a> MapAccess<'de> for MapAccessTop<'a, T> {
 
 /// Deserialize an instance of type `T` from a string of INI text.
 pub fn from_str<T: DeserializeOwned>(s: &str) -> Result<T> {
-    let mut de = Deserializer::new(parse::Parser::from_str(s.as_ref()));
+    let mut de = Deserializer::new(parse::Parser::from_str(s));
     let value = Deserialize::deserialize(&mut de)?;
 
     de.assert_eof()?;

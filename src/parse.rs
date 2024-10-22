@@ -1,20 +1,13 @@
-use std::{io, fmt, error, str};
-use result::prelude::*;
+#![allow(clippy::should_implement_trait)]
+use std::{error, fmt, io, str};
 use void::Void;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum Item {
     Empty,
-    Section {
-        name: String
-    },
-    Value {
-        key: String,
-        value: String,
-    },
-    Comment {
-        text: String
-    },
+    Section { name: String },
+    Value { key: String, value: String },
+    Comment { text: String },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -63,7 +56,7 @@ impl<E: error::Error> error::Error for Error<E> {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             Error::Inner(ref e) => Some(e),
             _ => None,
@@ -77,9 +70,7 @@ pub struct Parser<T> {
 
 impl<T> Parser<T> {
     pub fn new(input: T) -> Self {
-        Parser {
-            input: input,
-        }
+        Parser { input }
     }
 
     pub fn into_inner(self) -> T {
@@ -106,40 +97,31 @@ impl<R: io::Read> Parser<io::Lines<io::BufReader<R>>> {
 }
 
 impl<T> Parser<T> {
-    fn parse_next<E, S: AsRef<str>>(line: Option<S>) -> Result<Option<Item>, Error<E>> {
-        let line = match line {
-            Some(line) => line,
-            None => return Ok(None),
-        };
+    fn parse_next<E, S: AsRef<str>>(line: S) -> Result<Item, Error<E>> {
         let line = line.as_ref();
-
         if line.starts_with('[') {
             if line.ends_with(']') {
                 let line = &line[1..line.len() - 1];
                 if line.contains(']') {
                     Err(Error::Syntax(SyntaxError::SectionName))
                 } else {
-                    Ok(Some(Item::Section {
-                        name: line.into(),
-                    }))
+                    Ok(Item::Section { name: line.into() })
                 }
             } else {
                 Err(Error::Syntax(SyntaxError::SectionNotClosed))
             }
         } else if line.starts_with(';') || line.starts_with('#') {
-            Ok(Some(Item::Comment {
-                text: line.into(),
-            }))
+            Ok(Item::Comment { text: line.into() })
         } else {
             let mut line = line.splitn(2, '=');
             if let Some(key) = line.next() {
                 if let Some(value) = line.next() {
-                    Ok(Some(Item::Value {
+                    Ok(Item::Value {
                         key: key.trim().into(),
                         value: value.trim().into(),
-                    }))
+                    })
                 } else if key.is_empty() {
-                    Ok(Some(Item::Empty))
+                    Ok(Item::Empty)
                 } else {
                     Err(Error::Syntax(SyntaxError::MissingEquals))
                 }
@@ -150,17 +132,23 @@ impl<T> Parser<T> {
     }
 }
 
-impl<E, S: AsRef<str>, T: Iterator<Item=Result<S, E>>> Iterator for Parser<T> {
+impl<E, S: AsRef<str>, T: Iterator<Item = Result<S, E>>> Iterator for Parser<T> {
     type Item = Result<Item, Error<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.input.next_invert().map_err(Error::Inner).and_then(|l| Self::parse_next(l)).invert()
+        let next = self
+            .input
+            .next()?
+            .map_err(Error::Inner)
+            .and_then(|l| Self::parse_next(l));
+
+        Some(next)
     }
 }
 
 pub struct OkIter<I>(pub I);
 
-impl<T, I: Iterator<Item=T>> Iterator for OkIter<I> {
+impl<T, I: Iterator<Item = T>> Iterator for OkIter<I> {
     type Item = Result<T, Void>;
 
     fn next(&mut self) -> Option<Self::Item> {
