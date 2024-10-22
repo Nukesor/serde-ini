@@ -2,12 +2,19 @@
 use std::{error, fmt, io, str};
 use void::Void;
 
+/// This struct is used to parse, but some values are ignored by the parser.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub enum Item {
+pub enum InnerItem {
     Empty,
     Section { name: String },
     Value { key: String, value: String },
     Comment { text: String },
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum Item {
+    Section { name: String },
+    Value { key: String, value: String },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -97,7 +104,7 @@ impl<R: io::Read> Parser<io::Lines<io::BufReader<R>>> {
 }
 
 impl<T> Parser<T> {
-    fn parse_next<E, S: AsRef<str>>(line: S) -> Result<Item, Error<E>> {
+    fn parse_next<E, S: AsRef<str>>(line: S) -> Result<InnerItem, Error<E>> {
         let line = line.as_ref();
         if line.starts_with('[') {
             if line.ends_with(']') {
@@ -105,23 +112,23 @@ impl<T> Parser<T> {
                 if line.contains(']') {
                     Err(Error::Syntax(SyntaxError::SectionName))
                 } else {
-                    Ok(Item::Section { name: line.into() })
+                    Ok(InnerItem::Section { name: line.into() })
                 }
             } else {
                 Err(Error::Syntax(SyntaxError::SectionNotClosed))
             }
         } else if line.starts_with(';') || line.starts_with('#') {
-            Ok(Item::Comment { text: line.into() })
+            Ok(InnerItem::Comment { text: line.into() })
         } else {
             let mut line = line.splitn(2, '=');
             if let Some(key) = line.next() {
                 if let Some(value) = line.next() {
-                    Ok(Item::Value {
+                    Ok(InnerItem::Value {
                         key: key.trim().into(),
                         value: value.trim().into(),
                     })
                 } else if key.is_empty() {
-                    Ok(Item::Empty)
+                    Ok(InnerItem::Empty)
                 } else {
                     Err(Error::Syntax(SyntaxError::MissingEquals))
                 }
@@ -135,14 +142,27 @@ impl<T> Parser<T> {
 impl<E, S: AsRef<str>, T: Iterator<Item = Result<S, E>>> Iterator for Parser<T> {
     type Item = Result<Item, Error<E>>;
 
+    /// Return the next item that isn't a Comment or Empty
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self
-            .input
-            .next()?
-            .map_err(Error::Inner)
-            .and_then(|l| Self::parse_next(l));
+        loop {
+            let next = self
+                .input
+                .next()?
+                .map_err(Error::Inner)
+                .and_then(|l| Self::parse_next(l));
 
-        Some(next)
+            let next = match next {
+                Ok(next) => next,
+                Err(err) => return Some(Err(err)),
+            };
+
+            match next {
+                InnerItem::Comment { .. } => continue,
+                InnerItem::Empty => continue,
+                InnerItem::Section { name } => return Some(Ok(Item::Section { name })),
+                InnerItem::Value { key, value } => return Some(Ok(Item::Value { key, value })),
+            }
+        }
     }
 }
 

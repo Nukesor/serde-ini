@@ -113,15 +113,10 @@ impl<T> Deserializer<T> {
 
 impl<T: Trait> Deserializer<T> {
     fn populate(&mut self) {
-        while let Next::Init = self.next {
-            let next = self.input.next();
-            self.next = match next {
-                Some(Ok(Item::Comment { .. })) => Next::Init,
-                Some(Ok(Item::Empty)) => Next::Init,
-                Some(v) => Next::Some(v),
-                None => Next::Eof,
-            };
-        }
+        self.next = match self.input.next() {
+            Some(v) => Next::Some(v),
+            None => Next::Eof,
+        };
     }
 
     fn next_item(&mut self) -> Result<Item> {
@@ -158,7 +153,6 @@ impl<T: Trait> Deserializer<T> {
             Some(&mut Item::Value { .. }) => Some(PeekKind::Value),
             Some(&mut Item::Section { .. }) => Some(PeekKind::Section),
             None => None,
-            Some(..) => unreachable!(),
         })
     }
 

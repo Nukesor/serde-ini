@@ -46,8 +46,6 @@ impl<W: Write> Writer<W> {
             Item::Value { ref key, ref value } => {
                 write!(&mut self.write, "{}={}{}", key, value, self.line_ending)
             }
-            Item::Comment { ref text } => write!(&mut self.write, ";{}{}", text, self.line_ending),
-            Item::Empty => write!(&mut self.write, "{}", self.line_ending),
         }
     }
 }
